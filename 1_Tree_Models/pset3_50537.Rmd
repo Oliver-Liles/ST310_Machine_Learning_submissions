@@ -1,0 +1,338 @@
+---
+title: "Exercise set 3"
+author: 50537
+output: html_document
+---
+
+
+
+```{r setup1, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+library(tidyverse)
+theme_set(theme_minimal())
+```
+
+
+
+```{r setup2}
+candidate_number <- 50537
+set.seed(candidate_number)
+```
+
+
+
+```{r}
+#### Simulation exercise
+
+### Data generation
+
+set.seed(50537)
+# the data set I have created will be assessing ship quality based on different aspects
+
+n <- 2000
+## Generate categorical predictors
+wood <- c("oak", "walnut", "spruce")
+wood_var <- factor(sample(wood, n, prob = c(7, 4, 2), replace = TRUE))
+
+metal <- c("steel", "iron", "brass")
+metal_var <- factor(sample(metal, n, prob = c(4, 5, 3), replace = TRUE))
+
+propulsion <- c("wind", "coal", "electric")
+prop_var <- factor(sample(propulsion, n, prob = c(3, 4, 1), replace = TRUE))
+
+table(wood_var)
+table(metal_var)
+table(prop_var)
+```
+
+```{r}
+set.seed(50537)
+
+## Generate numeric predictors
+strength <- abs(rnorm(2000, mean=6, sd=2.5))
+speed <- runif(2000, min=1, max=10)
+agility <- 0.5 * runif(2000, min=1, max=10)
+
+## Data frame version of predictors
+predictors <- data.frame(x1 = strength, x2 = speed, x3 = agility, 
+                         x4 = wood_var, x5 = metal_var, x6 = prop_var)
+head(predictors)
+```
+
+```{r}
+set.seed(50537)
+
+### CEF
+CEF <- function(x1, x2, x3, x4, x5, x6) {
+  
+  # oak > walnut > spruce
+  # iron > steel > brass
+  # coal > wind > electric
+  
+  case_when(
+    x4=="oak" & x5=="iron" & x6 == "coal" ~ 6*x1^2 + 4*x2 + 20*x2*x3 + 5,
+    x4=="oak" & x5=="iron" & x6 == "wind" ~ 5*x1^2 + 3*x2 + 16*x2*x3 + 7.5,
+    x4=="oak" & x5=="iron" & x6 == "electric" ~ 4*x1^2 + 2*x2 + 12*x2*x3 + 10,
+    x4=="oak" & x5=="steel" & x6 == "coal" ~ 5*x1^2 + 3.5*x2 + 18*x2*x3 + 5,
+    x4=="oak" & x5=="steel" & x6 == "wind" ~ 4*x1^2 + 2.5*x2 + 14*x2*x3 + 7.5,
+    x4=="oak" & x5=="steel" & x6 == "electric" ~ 3*x1^2 + 1.5*x2 + 10*x2*x3 + 10,
+    x4=="oak" & x5=="brass" & x6 == "coal" ~ 4*x1^2 + 3*x2 + 16*x2*x3 + 5,
+    x4=="oak" & x5=="brass" & x6 == "wind" ~ 3*x1^2 + 2*x2 + 12*x2*x3 + 7.5,
+    x4=="oak" & x5=="brass" & x6 == "electric" ~ 2*x1^2 + x2 + 8*x2*x3 + 10,
+    x4=="walnut" & x5=="iron" & x6 == "coal" ~ 5.5*x1^2 + 4*x2 + 18*x2*x3 + 2.5,
+    x4=="walnut" & x5=="iron" & x6 == "wind" ~ 4.5*x1^2 + 3*x2 + 14*x2*x3 + 5,
+    x4=="walnut" & x5=="iron" & x6 == "electric" ~ 3.5*x1^2 + 2*x2 + 10*x2*x3 + 7.5,
+    x4=="walnut" & x5=="steel" & x6 == "coal" ~ 4.5*x1^2 + 3.5*x2 + 16*x2*x3 + 2.5,
+    x4=="walnut" & x5=="steel" & x6 == "wind" ~ 3.5*x1^2 + 2.5*x2 + 12*x2*x3 + 5,
+    x4=="walnut" & x5=="steel" & x6 == "electric" ~ 2.5*x1^2 + 1.5*x2 + 8*x2*x3 + 7.5,
+    x4=="walnut" & x5=="brass" & x6 == "coal" ~ 3.5*x1^2 + 3*x2 + 14*x2*x3 + 2.5,
+    x4=="walnut" & x5=="brass" & x6 == "wind" ~ 2.5*x1^2 + 2*x2 + 10*x2*x3 + 5,
+    x4=="walnut" & x5=="brass" & x6 == "electric" ~ 1.5*x1^2 + x2 + 6*x2*x3 + 7.5,
+    x4=="spruce" & x5=="iron" & x6 == "coal" ~ 5*x1^2 + 4*x2 + 16*x2*x3,
+    x4=="spruce" & x5=="iron" & x6 == "wind" ~ 4*x1^2 + 3*x2 + 12*x2*x3 + 2.5,
+    x4=="spruce" & x5=="iron" & x6 == "electric" ~ 3*x1^2 + 2*x2 + 8*x2*x3 + 5,
+    x4=="spruce" & x5=="steel" & x6 == "coal" ~ 4*x1^2 + 3.5*x2 + 14*x2*x3,
+    x4=="spruce" & x5=="steel" & x6 == "wind" ~ 3*x1^2 + 2.5*x2 + 10*x2*x3 + 2.5,
+    x4=="spruce" & x5=="steel" & x6 == "electric" ~ 2*x1^2 + 1.5*x2 + 6*x2*x3 + 5,
+    x4=="spruce" & x5=="brass" & x6 == "coal" ~ 3*x1^2 + 3*x2 + 12*x2*x3,
+    x4=="spruce" & x5=="brass" & x6 == "wind" ~ 2*x1^2 + 2*x2 + 8*x2*x3 + 2.5,
+    x4=="spruce" & x5=="brass" & x6 == "electric" ~ x1^2 + x2 + 4*x2*x3 + 5
+  )
+
+}
+
+training_data <- predictors |> mutate(y = CEF(x1, x2, x3, x4, x5, x6) + rnorm(n, sd = 12)) # adding noise
+# y represents "ship quality"
+
+ggplot(training_data, aes(x1, y, colour = x4)) + geom_point(alpha = .8)
+ggplot(training_data, aes(x2, y, colour = x4)) + geom_point(alpha = .8)
+ggplot(training_data, aes(x3, y, colour = x4)) + geom_point(alpha = .8)
+ggplot(training_data, aes(x1, y, colour = x5)) + geom_point(alpha = .8)
+ggplot(training_data, aes(x2, y, colour = x5)) + geom_point(alpha = .8)
+ggplot(training_data, aes(x3, y, colour = x5)) + geom_point(alpha = .8)
+ggplot(training_data, aes(x1, y, colour = x6)) + geom_point(alpha = .8)
+ggplot(training_data, aes(x2, y, colour = x6)) + geom_point(alpha = .8)
+ggplot(training_data, aes(x3, y, colour = x6)) + geom_point(alpha = .8)
+```
+
+
+
+```{r}
+### additive models
+library(gam)
+
+
+gam_oracle <- gam(y ~ x1^2 + x2 + x2*x3 + as.factor(x4) + as.factor(x5) + as.factor(x6),
+                  data=training_data)
+gam_simple <- gam(y ~ ., data=training_data)
+
+
+summary(gam_oracle) # all predictors significant
+summary(gam_simple) # all predictors significant
+
+
+preds_oracle <- predict(gam_oracle , newdata=training_data)
+mean((preds_oracle - training_data$y)^2) # smaller and so better than 'simple' model
+preds_simple <- predict(gam_simple , newdata=training_data)
+mean((preds_simple - training_data$y)^2) # larger and so worse than 'oracle' model
+
+
+plot.Gam(gam_oracle, se=T , col="blue") # smaller difference from true value than 'simple' model
+plot.Gam(gam_simple, se=T, col="red")
+# both show very little variance
+
+
+anova(gam_oracle, gam_simple, test="F") # 'oracle' model is significantly better
+
+
+plot(training_data$y, preds_oracle)
+abline(0, 1, col="blue")
+abline(lm(preds_oracle ~ training_data$y), col="green") # closer to true CEF
+
+plot(training_data$y, preds_simple)
+abline(0, 1, col="red")
+abline(lm(preds_oracle ~ training_data$y), col="green")
+
+
+```
+
+
+
+```{r}
+
+library(tree)
+library(randomForest)
+library(gbm)
+
+
+### single tree
+single_tree <- tree(y ~ ., training_data)
+
+plot(single_tree)
+text(single_tree , pretty = 0)
+
+cv_sgl_tree <- cv.tree(single_tree) # cross-validating to choose tuning parameters
+plot(cv_sgl_tree, type='b')
+plot(cv_sgl_tree$size , cv_sgl_tree$dev , type = "b")
+plot(cv_sgl_tree$k, cv_sgl_tree$dev , type = "b")
+names(cv_sgl_tree)
+cv_sgl_tree
+
+prune_tree <- prune.tree(single_tree , best = 10)
+plot(prune_tree)
+text(prune_tree , pretty = 0)
+
+tree.preds <- predict(single_tree, newdata = training_data)
+mean((tree.preds - training_data$y)^2)
+plot(tree.preds, training_data$y) # not close enough fit to training data or CEF
+abline(0, 1, col="red")
+abline(lm(tree.preds ~ training_data$y), col="blue")
+# very sensitive to change in data but very interpretable
+
+
+### random forest
+rand_forest <- randomForest(y ~ ., data=training_data, mtry = 2, importance = TRUE)
+
+rand_forest # 6/3 = 2 vars tried at each split
+importance(rand_forest)
+
+plot(rand_forest)
+varImpPlot(rand_forest)
+
+rf.preds <- predict(rand_forest, newdata = training_data)
+mean((rf.preds - training_data$y)^2)
+plot(rf.preds, training_data$y) # slightly off training data and CEF but still very close
+abline(0, 1, col="red")
+abline(lm(rf.preds ~ training_data$y), col="blue")
+# less interpretable and slower than single tree
+
+
+### boosted tree
+boost_tree <- gbm(y ~ ., data=training_data, distribution="gaussian", 
+                  n.trees=5000, interaction.depth=4, shrinkage=0.2)
+
+boost_tree
+summary(boost_tree)
+
+# partial dependence plots
+plot(boost_tree, i='x1') # exponential relationship with y
+plot(boost_tree, i='x2') # linear relationship but with 2 sudden drops
+plot(boost_tree, i='x3') # very linearly dependent
+plot(boost_tree, i='x4') # clear ranking of importance/ effect on y
+plot(boost_tree, i='x5') # clear ranking of importance/ effect on y
+plot(boost_tree, i='x6') # clear ranking of importance/ effect on y
+
+boost.preds <- predict(boost_tree, newdata = training_data)
+mean((boost.preds - training_data$y)^2)
+
+plot(boost.preds, training_data$y) # very close fit to training data and CEF (possibly over fitted)
+abline(0, 1, col="red")
+# least interpretable of the 3 models and slower than single tree
+
+```
+
+
+
+```{r}
+set.seed(50537)
+
+### ID generalisation
+test_data <- predictors |> mutate(y = CEF(x1, x2, x3, x4, x5, x6) + rnorm(n, sd = 12))
+test <- sample(1: nrow(test_data), nrow(test_data) / 2)
+test_data <- test_data[test, ]
+head(test_data)
+
+tree.preds.test <- predict(single_tree, newdata = test_data)
+mean((tree.preds.test - test_data$y)^2)
+
+prune.preds.test <- predict(prune_tree, newdata = test_data)
+mean((prune.preds.test - test_data$y)^2)
+
+rf.preds.test <- predict(rand_forest, newdata = test_data)
+mean((rf.preds.test - test_data$y)^2)
+
+boost.preds.test <- predict(boost_tree, newdata = test_data)
+mean((boost.preds.test - test_data$y)^2)
+# in order of best test results: boost tree > random forest > single tree > pruned tree
+# i choose to use boost tree from here as it's performed best on the test data
+# (also see previous part for visualisation of tree model fits)
+
+
+### OOD generalisation
+
+## Concept shift
+summary(training_data)
+summary(test_data)
+
+mean((boost.preds.test - test_data$y)^2) # boost model on test data value
+
+concpt_btr <- test_data
+concpt_btr$y <- concpt_btr$y - 0.001*(concpt_btr$x1)^2 + 0.01*(concpt_btr$x2) - 0.01*(concpt_btr$x3)
+boost.concpt.btr.preds <- predict(boost_tree, newdata = concpt_btr)
+mean((boost.concpt.btr.preds - concpt_btr$y)^2) # smaller number and so, more accurate
+# The training values of x1 and x3 are, on average, larger than the test values
+# and so by decreasing x1 and x3's effect on y, it makes the model, that was made
+# using the training data, fit the test data better.
+# The training value of x2 is, on average, smaller than the test values and so, 
+# by increasing x2's effect on y, it makes the model, that was made using the 
+# training data, fit the test data better.
+
+
+  
+concpt_wrse <- test_data
+concpt_wrse$y <- concpt_wrse$y + 5
+boost.concpt.wrse.preds <- predict(boost_tree, newdata = concpt_wrse)
+mean((boost.concpt.wrse.preds - concpt_wrse$y)^2) # larger number and so, less accurate
+# Linearly shifting the y (output) values by +5 causes the tree model to fit the data worse
+
+```
+
+
+
+```{r}
+set.seed(50537)
+
+## Covariate shift
+
+mean((boost.preds.test - test_data$y)^2) # boost model on test data value
+
+summary(test_data) # viewing the data the comparison is being made to
+summary(training_data) # viewing the data the model was trained on
+
+
+strength_covar_btr <- abs(rnorm(2000, mean=6.0001, sd=2.5)) # increased mean of x1 (strength) predictor
+predictors_covar_btr <- data.frame(x1 = strength_covar_btr, x2 = speed, x3 = agility, 
+                         x4 = wood_var, x5 = metal_var, x6 = prop_var)
+set.seed(50537)
+covar_btr <- predictors_covar_btr |> mutate(y = (CEF(x1, x2, x3, x4, x5, x6) 
+                                                 + rnorm(n, sd = 12)))
+summary(covar_btr)
+
+boost.covar.btr.preds <- predict(boost_tree, newdata = covar_btr)
+mean((boost.covar.btr.preds - covar_btr$y)^2) # smaller number and so, more accurate
+
+# By slightly increasing the mean average value of x1 I have moved it closer to
+# a value which best fits the model based off of the training data and so the prediction 
+# of this data set has a lower mean squared error / is better at predicting y.
+
+
+set.seed(50537)  
+strength_covar_wrse <- abs(rnorm(2000, mean=6, sd=3)) # increased variance of x1 (strength) predictor
+predictors_covar_wrse <- data.frame(x1 = strength_covar_wrse, x2 = speed, x3 = agility, 
+                         x4 = wood_var, x5 = metal_var, x6 = prop_var)
+set.seed(50537)
+covar_wrse <- predictors_covar_wrse |> mutate(y = (CEF(x1, x2, x3, x4, x5, x6) 
+                                                   + rnorm(n, sd = 12)))
+
+boost.covar.wrse.preds <- predict(boost_tree, newdata = covar_wrse)
+mean((boost.covar.wrse.preds - covar_wrse$y)^2) # larger number and so, less accurate
+
+# By increasing the variance of the normally distributed variable, x1 (strength), 
+# which is significantly influential on y, I have caused the randomly generated 
+# values of x1 to be less consistent and so the values of y (the outcome) to be 
+# less consistent without having an effect on the conditional distribution of y.
+# And so the model is worse at predicting y from the predictors.
+```
+
+
