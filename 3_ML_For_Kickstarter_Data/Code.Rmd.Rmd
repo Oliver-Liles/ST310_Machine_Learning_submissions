@@ -1,0 +1,1039 @@
+---
+title: 'ST310 Group Project: Modelling the success of Kickstarter projects'
+author: "51126_50537_38134"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+# Contents:
+1. Baseline Model
+2. Interpretable Models
+  2.1 Interpretable Logistic Regression Model
+  2.2 Interpretable Classification Tree Model
+3. Gradient Descent Model
+4. Prediction Focused Models
+  4.1 Boosted Trees
+  4.2 Random Forest
+5. High Dimensional Model
+
+
+# Introduction
+Crowdfunding platforms like Kickstarter have transformed the entrepreneurial landscape by enabling individuals to raise capital directly from the public to fund a variety of creative endeavours. Our goal with this project was to investigate using Machine Learning techniques what factors make it more likely for a project to succeed. This could be useful for creators, who gain insight into how to increase their chances of a successful campaign, as well as for backers, who could find out the probability a specific campaign will be successful.
+
+We conducted our analysis on a sample of over 200,000 campaigns launched between 2009 and 2024, which we obtained from a web scraping website [1]. As there have only been slightly more than 650,000 Kickstarter campaigns ever [2], we find our dataset to be a representative sample. It includes information on a variety of project characteristics:
+
+•	The project’s funding goal (in US dollars)
+•	A project’s category (ranging from photography to food)
+•	The currency a project was launched in
+•	Whether the project is a ‘staff-pick’ (a special designation given to projects the Kickstarter staff finds particularly noteworthy or deserving of extra visibility)
+•	Whether a video is included in the Kickstarter page
+•	The campaign’s desired duration prior to launch
+•	The date a campaign was launched (broken down into the year, month and day of the week)
+•	The number of characters in a project’s blurb
+•	The final outcome of a project (whether it met its goal)- this is what we predict
+
+Our interpretable model found there are ways to reliably improve the probability a project meets its goal; including a video, setting a reasonable goal, including a higher number of blurb characters, as well as launching shorter campaigns are all recommended. Our prediction focused model was built on only 20% of the total dataset due to overly long runtimes, however, it achieved an accuracy of 78%, compared to a baseline model accuracy of 70%. We also built a high dimensional model on an even smaller subset of the dataset, as well as a gradient descent model, that reinforced the findings of our interpretable model.
+
+[1] Vitulskis, T., & Jonaitis, P. (2025, April 11). Kickstarter Datasets. Retrieved from Web Robots: https://webrobots.io/kickstarter-datasets/
+[2] Woodward, M. (2025, April 11). Search Logistics. Retrieved from KICKSTARTER STATS & FACTS 2025: EVERYTHING YOU NEED TO KNOW : https://www.searchlogistics.com/learn/statistics/kickstarter-stats-facts/
+
+# Loading libraries and some preprocessing
+```{r}
+library(tidymodels)
+library(dplyr)
+```
+
+```{r}
+kick_data <- read.csv('cleaned310.csv')
+
+#Centred year since later found it made more sense as a centred predictor
+kick_data$year_centred <- kick_data$year_launched - 2009
+kick_data <- kick_data %>% select(-year_launched)
+
+# creating a log_goal_usd since it worked better for later models
+kick_data$log_goal_usd <- log2(kick_data$goal_usd)
+
+#Made the following columns the correct type for later models since they are categorical
+kick_data <- kick_data %>%
+  mutate(
+    category = as.factor(category),
+    currency = as.factor(currency),
+    day_launched = as.factor(day_launched),
+    month_launched = as.factor(month_launched),
+  )
+
+kick_data <- na.omit(kick_data) #removed all remaining missing rows
+```
+
+# 1. Baseline Model
+
+For the baseline model predicting the state of Kickstarter projects, we created a logistic regression model on all predictors.
+
+```{r}
+baseline_model <- glm(state~. -(log_goal_usd), data=kick_data) 
+#the baseline model does not use the logarithmic transform of goal
+summary(baseline_model)
+```
+```{r}
+#Confusion Matrix for baseline model- in order to find predictive accuracy
+set.seed(53)
+train <- sample(1:nrow(kick_data), nrow(kick_data)/2)
+test <- (-train)
+
+training_data <- kick_data[train, ]
+test_data <- kick_data[test, ]
+
+baseline_dummy <- glm(state~. -(log_goal_usd), data=training_data)
+predictions <- predict(baseline_dummy, newdata=test_data)
+
+confusion_matrix <- table(test_data$state, predictions>0.5) 
+#so if the model has probability greater than a half that a project is successful it
+#comes up as successful
+print(confusion_matrix)
+print(sum(diag(confusion_matrix))/sum(confusion_matrix)) 
+#to find accuracy I summed diagonals over total
+```
+So the baseline model has around a 70% accuracy.
+
+# 2. Interpretable models
+
+## 2.1 Interpretable Logistic Regression Model
+
+Our method for fitting this model was to first try multiple different subsets of predictors and find the one which led to the lowest BIC- since BIC penalises excessive use of parameters, encouraging interpretable models. We initially wanted to use the leaps package mentioned in ISLR for best subset selection, but we didn't find this to be easy to do for logistic regression, so fitted the models manually.
+
+```{r}
+BIC(baseline_model)
+```
+
+```{r}
+interpret_model_goal <- glm(state~. -(goal_usd), data=kick_data)
+BIC(interpret_model_goal)
+
+interpret_model1 <- glm(state~. -(day_launched) -(log_goal_usd), data=kick_data)
+BIC(interpret_model1)
+
+interpret_model2 <- glm(state~. -(month_launched) -(log_goal_usd), data=kick_data)
+BIC(interpret_model2) 
+
+interpret_model3 <- glm(state ~. -(blurb_characters) -(log_goal_usd), data=kick_data)
+BIC(interpret_model3)
+
+interpret_model4 <- glm(state ~. -(desired_duration) -(log_goal_usd), data=kick_data)
+BIC(interpret_model4)
+
+interpret_model5 <- glm(state~. -(currency) -(log_goal_usd), data=kick_data)
+BIC(interpret_model5)
+
+interpret_model6 <- glm(state~. -(category) -(log_goal_usd), data=kick_data)
+BIC(interpret_model6)
+
+interpret_model7 <- glm(state~. -(year_centred) -(log_goal_usd), data=kick_data)
+BIC(interpret_model7)
+
+#We didn't bother checking removing predictors like staff_pick as they appeared 
+#extremely significant in the baseline model already
+#By utilising the BIC we found including a logarithmic transform for goal, and 
+#removing month of launch as a predictor led to a decrease in BIC- leading us to 
+#do that for our model
+```
+
+```{r}
+interpret_model <- glm(state~. -(month_launched) -(goal_usd), data=kick_data)
+summary(interpret_model)
+```
+
+```{r}
+#Predictive power of more interpretable model:
+interpret_dummy <- glm(state~. -(month_launched) -(goal_usd), data=training_data)
+predictions2 <- predict(interpret_dummy, newdata=test_data)
+
+confusion_matrix2 <- table(test_data$state, predictions2>0.5) 
+print(confusion_matrix2)
+print(sum(diag(confusion_matrix2))/sum(confusion_matrix2))
+```
+This model had higher predictive power than the baseline simply by including a logarithmic transform and removing one predictor. It can also be relatively easily interpreted from the summary output above.
+
+For one, we can gain insight into the direction different predictors affect project success. For example, the positive coefficient on year suggests projects are getting more successful year over year, whilst the high positive coefficients of staff pick and video suggests a project that is a staff pick (a special designation given to projects the Kickstarter team wants to boost on their page) has a higher probability of success, and including a video also boosts the probability of success. We can also see projects launched with pounds (GBP) are more likely to succeed than Euros, with the currency that predicts the highest chance of success being the Japanese yen.
+
+By plugging the values for a few examples into the coefficients provided by the summary output, we can also gain more specific insight into the way certain predictors affect success. For example, a project launched in the comics category that also has a few other characteristics (has a video, launched in 2025 on a Friday, has a goal of $1000), is predicted a 72.6% chance of success by the model (we used the inverse logistic function on the specific sum of values). Additionally, a project with the exact same characteristics, except launched in the crafts category, is only predicted a 61% chance of success. This demonstrates the importance the category of project has on likelihood of success. 
+
+Our results also align with past research. Oduro, Yu, & Huang, (2022)* employed logistic regression and classification tree methodologies to predict the probability a project meets its goal. They similarly emphasised the predictive value of factors such as funding goal and the inclusion of promotional videos on the project page, which they hypothesised increased engagement and trust among potential backers. 
+
+Compared to the baseline model, this model is very similar (as the only difference is one less predictor and a logarithmic transform), and so the results are largely similar to what could be taken from the baseline.
+
+*Source: Oduro, M. S., Yu, H., & Huang, H. (2022). Predicting the Entrepreneurial Success of Crowdfunding Campaigns Using Model-Based Machine Learning Methods. International Journal of Crowd Science, 7-16.
+
+## 2.2 Interpretable Classification Tree Model
+We will utilise classification trees to build a non-baseline model that is interpretable. In particular, we make use of the tree structure and the variable importance feature of classification trees to conduct some inference.
+
+```{r}
+set.seed(123) 
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(tidymodels)
+
+kick_data_split <- initial_split(kick_data, prop= 0.8, strata = state)
+kick_data_train <- training(kick_data_split)
+kick_data_test <- testing(kick_data_split)
+
+
+# Initially, we will use a low initial cp value to allow the classification tree
+# to grow a deep tree
+classification_tree <- rpart(state ~ ., data = kick_data_train, method = "class",
+                             control = rpart.control(minsplit = 20, cp = 0.0001))
+
+# print cp table to inspect
+cp_table_full <- printcp(classification_tree)
+
+# one method we will try out is to select a CP using the 1-SE rule
+min_xerror_index <- which.min(cp_table_full[, "xerror"])
+min_xerror <- min(cp_table_full[, "xerror"])
+min_xerror_se <- cp_table_full[min_xerror_index, "xstd"]
+threshold <- min_xerror + min_xerror_se
+eligible_rows <- which(cp_table_full[, "xerror"] <= threshold)
+best_cp_index <- min(eligible_rows)  # Get the largest CP value which is the simplest model
+one_se_cp <- cp_table_full[best_cp_index, "CP"]
+pruned_model_one_se <- prune(classification_tree, cp = one_se_cp)
+one_se_cp
+#  0.0002846898, hence we will prune it with this cp value
+one_se_pruned_model <- prune(classification_tree, cp = one_se_cp)
+# visualise
+rpart.plot(one_se_pruned_model, type = 3, extra = 101, fallen.leaves = TRUE,
+           main = "Pruned Classification Tree (1-SE Rule)", cex = 0.8)
+
+
+# As we can see from here this is no where near an interpretable tree, suggesting
+# our CP is way too small.
+# This can be due to the fact the we have a very large dataset with near 200,000
+# entries, the SE we get is extremely small that the 1 SE rule just results in 
+# selecting the CP value with the minimum error.
+# Therefore as this method does not work for us, we will inspect the CP table and
+# manually select a CP value that will give us an interpretable tree
+```
+
+```{r}
+classification_tree <- rpart(state ~ ., data = kick_data_train, method = "class",
+                             control = rpart.control(minsplit = 20, cp = 0.0001))
+# print CP table to inspect
+cp_table_full <- printcp(classification_tree)
+# lets try a CP of  0.00247757 which has a xerror 10% higher then the minimum
+pruned_model <- prune(classification_tree, cp = 0.00247757)
+# visualise
+rpart.plot(pruned_model, type = 3, extra = 101, fallen.leaves = TRUE, 
+           main = "Pruned Classification Tree", cex = 0.8)
+
+# still too deep
+
+# lets try a CP of  0.005
+pruned_model <- prune(classification_tree, cp = 0.005)
+# visualise
+rpart.plot(pruned_model, box.palette = "auto", shadow.col = "gray", nn = TRUE, 
+           main = "Pruned Classification Tree", fallen.leaves = TRUE, tweak = 2)
+# this looks reasonable
+prediction_tree <- predict(pruned_model, kick_data_test, type = "class")
+kick_data_test$state <- as.factor(kick_data_test$state)
+confusion_matrix_tree <- confusionMatrix(prediction_tree, kick_data_test$state)
+print(confusion_matrix_tree)
+# show variable importance
+importance_tree <- pruned_model$variable.importance
+print(importance_tree)
+```
+
+We can see that with this classification tree, we have obtained an accuracy of 73%, which is slightly higher than our baseline model.
+
+From the tree plot, we observe that being a staff pick automatically predicts the project to have a 0.91 chance of success, indicating how strong a predictor it is. This is also verified in the variable importance table, with staff pick being the 2nd most important predictor after goal. If the project is not a staff pick, then the goal amount becomes extremely important in predicting success, with goals larger than 14,000 being predicted to fail with 0.25 probability of success, this shows an intuitive and obvious result of having a larger goal amount, you are less likely to succeed.
+
+As we saw in the logistic model, we observe that category is also an important predictor; depending on which category the project is in, the chances of reaching the goal amount changes significantly. Here, we can see how categories that are quite niche in the crowd funding industry like food, crafts(which we also saw in the previous logistic model), journalism and photography are predicted to fail, suggesting that projects in these categories get less attention from the public and hence gain fewer backers, making it harder for them to succeed. 
+
+Lastly, we observe that video is also an important predictor, with projects that include a video being more likely to succeed. Including a video allows backers to gain more information about the project and potentially increases its perceived trustworthiness. Overall, this classification tree provides interpretable results and meaningful insights into the data, offering consistent findings with those from the logistic regression model.
+
+
+
+
+# 3. Gradient Descent Model
+To create a model using gradient descent, we first split the data into training (for training the model), and testing (for the evaluation and comparison of the model) sets. Then, we prepared the data for a gradient descent algorithm using the `recipes` package of `tidymodels`[1] by one hot dummy coding categorical (>2 categories) variables and dummy coding binary variables, and then standardising all variables to have a mean of 0 and a standard deviation of 1. This 'recipe' was then applied to the training and testing data sets. 
+
+Our gradient descent function computes the loss for a given set of input coefficients, finds the gradient of that loss function (we use cross entropy loss, along with a penalty term for regularisation), and then updates the coefficient weights based on the learning rate and computed gradient again and again for a number of epochs. Our evaluation function (inspired by our 311 course) visualises how the accuracy of our model changes over the epochs. Using these functions we then carried out a grid search for a variety of possible best values for our hyper parameters: lambda, type of penalty (if any), learning rate, and how many epochs to train the model for to achieve the best test accuracy. We found that regularisation only improved our accuracy by 0.1% but did allow the model to learn the data and reach this test accuracy much faster. Also, regularisation should have helped avoid overfitting to the training data, allowing for better generalisation.
+
+We then trained the model using these tuned hyperparameters, and our results and interpretations can be found at the end of this section.
+  
+references:
+[1] `https://recipes.tidymodels.org/reference/index.html`
+
+## Train / Test Split for data
+```{r}
+set.seed(53)
+data_split <- initial_split(kick_data, prop = 0.8)
+train_data <- training(data_split)
+test_data  <- testing(data_split)
+```
+
+## Preparing data for Gradient Descent Algorithm
+```{r}
+## getting logical predictors so that 
+logi_vars <- train_data %>% select(where(is.logical)) %>% names()
+
+## creating recipe
+rec <- recipe(state ~ ., data = train_data) %>%
+  step_rm(goal_usd) %>% # improved test performance (found heuristically)
+  step_rm(month_launched) %>% # improved test performance (found heuristically)
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>% 
+  # making dummy variables of factors, assuming no multicollinearity
+  step_mutate(across(all_of(logi_vars), as.factor)) %>% 
+  # converting logicals to factors for step_dummy
+  step_dummy(all_of(logi_vars), -all_outcomes()) %>%  
+  # making dummy variables of factored logicals
+  step_normalize(all_numeric_predictors()) # standardisation
+
+# saving data specific recipe
+gd_rec <- prep(rec, training = train_data)
+
+## making prepared ("baked") test and train sets
+gd_train <- bake(gd_rec, new_data = NULL)
+gd_test  <- bake(gd_rec, new_data = test_data)
+```
+
+## Gradient descent function
+```{r}
+### creating sigmoid function for logistic regression
+sigmoid <- function(z) {
+  1 / (1 + exp(-z))
+}
+
+### creating gradient descent function
+grad_desc <- function(data, original_data, recipe, lr = 5e-2, epochs = 600, 
+                      updates = TRUE, lambda = 0.01, penalty = "l2") {
+  # getting target
+  target <- outcome_names(recipe) 
+  
+  ## preparing predictor (X) data
+  # removing the target column if necessary
+  if (target %in% names(data)) {
+    data <- data %>% select(-!!sym(target))
+  }
+  
+  # converting data frame to matrix
+  X <- as.matrix(data)
+  X <- cbind(intercept = 1, X) # adding an intercept column
+
+  # getting new pred names (incl. factor levels)
+  all_preds <- colnames(X)
+
+  ## preparing target (y) data
+  # getting the target from the original data
+  y <- original_data[[target]]
+  y <- as.numeric(y) # ensuring binary values
+
+  ## preparing rest of vars for regression
+  # initialising coefficients
+  coeffs <- matrix(rep(0, ncol(X)), nrow = ncol(X))
+
+  # getting amount of training data
+  n <- nrow(X)
+
+  # creating tracker for keeping a log of performance
+  loss_tracker <- numeric(epochs)
+
+  ## performing gradient descent
+  for (i in 1:epochs) {
+    # calculating loss and gradient
+    z <- X %*% coeffs
+    y_hat <- sigmoid(z)
+    
+    # calculating cross-entropy loss
+    eps <- 1e-8 # avoiding log(0)
+    loss <- -mean(y * log(y_hat + eps) + (1 - y) * log(1 - y_hat + eps))
+
+    # adding regularisation to the loss
+    if (penalty == "l1") {
+      loss <- loss + lambda * sum(abs(coeffs[-1])) # L1 regularisation
+    } else if (penalty == "l2") {
+      loss <- loss + lambda * sum(coeffs[-1]^2)    # L2 regularisation
+    }
+
+    # derivative of cross-entropy loss
+    err <- y_hat - y
+    grad <- (1 / n) * t(X) %*% err # getting new gradient
+    
+    # adding regularisation to the gradient
+    if (penalty == "l1") {
+      # derivative for L1 regularisation: lambda * sign(coeffs)
+      grad_penalty <- matrix(0, nrow = nrow(coeffs), ncol = 1)
+      grad_penalty[-1] <- lambda * sign(coeffs[-1]) # not including the coefficient
+      grad <- grad + grad_penalty
+    } else if (penalty == "l2") {
+      # derivative for L2 regularisation: 2 * lambda * coeffs
+      grad_penalty <- matrix(0, nrow = nrow(coeffs), ncol = 1)
+      grad_penalty[-1] <- 2 * lambda * coeffs[-1] # not including the coefficient
+      grad <- grad + grad_penalty
+    } # NB: else if (penalty == "none") {'skip this section'}
+
+    # updating coefficients and loss tracker
+    coeffs <- coeffs - lr * grad
+    loss_tracker[i] <- loss
+
+    # displaying current loss
+    if (i %% (epochs / 10) == 0 || i == epochs) {
+      if (updates) cat("\n Epoch:", i, ", Loss:", loss, "\n")
+      
+      # checking for divergence/ sigmoid saturation
+      if (is.na(loss) || is.infinite(loss)) {
+        warning("divergence occurring/ sigmoid saturating")
+        break
+      }
+    }
+  }
+
+  ## outputting trained model
+  coef_names <- colnames(X)
+  rownames(coeffs) <- coef_names # naming coeffs
+  
+  # preparing list of all necessary info for model_eval and interpretation
+  model_output <- list(
+    coefficients = coeffs,
+    loss_tracker = loss_tracker,
+    target = target,
+    final_coefficient_names = coef_names
+  )
+  return(model_output)
+}
+```
+
+## Evaluation function 
+```{r}
+### creating function to evaluate the model on test data
+eval_model <- function(model, ml_test_data, original_test_data, cutoff = 0.5) {
+
+  ## preparing test predictor (X_test) data
+  # remove the target column from the preprocessed test data frame
+  if (model$target %in% names(ml_test_data)) {
+      ml_test_data <- ml_test_data %>% select(-!!sym(model$target))
+  }
+  
+  # convert data frame to matrix
+  X_test <- as.matrix(ml_test_data)
+  X_test <- cbind(intercept = 1, X_test) # adding an intercept column
+
+  ## preparing binary test target (y_test)
+  y_test <- original_test_data[[model$target]]
+  y_test <- as.numeric(y_test) # ensuring binary values
+
+  ## making predictions and saving outputs
+  coeffs <- model$coefficients
+  metrics <- list()
+
+  # calculating predictions
+  z <- X_test %*% coeffs
+  probs <- sigmoid(z)
+  pred_class <- ifelse(probs > cutoff, 1, 0)
+
+  # converting back to factors for confusion matrix
+  pred_class_factor <- factor(pred_class, levels = c(0, 1))
+  y_test_factor <- factor(y_test, levels = c(0, 1))
+
+  # creating confusion matrix and accuracy
+  conf_matrix <- table(Actual = y_test_factor, Predicted = pred_class_factor)
+  accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+
+  # saving metrics
+  metrics$probs <- probs
+  metrics$pred_class <- ifelse(probs > cutoff, 1, 0)
+  metrics$confusion_matrix <- conf_matrix
+  metrics$accuracy <- accuracy
+
+  return(metrics)
+}
+```
+
+## Parameter tuning
+```{r}
+# tuning options
+tuning_epochs <- 500
+lr_opts <- c(5e-3, 1e-2, 5e-2, 1e-1)
+penalty_opts <- c("l1", "l2", "none")
+lambda_opts <- c(0.005, 0.01, 0.05, 0.1)
+
+# setting low value for best parameters
+best_params <- list(best_acc=0, best_lr=0, best_epochs=1000, 
+                    best_penalty=NULL, best_lambda=0)
+
+# running through tuning parameters to get best options based on test accuracy
+for (curr_lr in lr_opts) {
+  for (curr_penalty in penalty_opts) {
+    if (curr_penalty == "none") {
+      curr_lambda <- "none"
+      
+      # training
+      curr_model <- grad_desc(gd_train, train_data, gd_rec, lr=curr_lr, 
+                              updates=FALSE, epochs=tuning_epochs)
+      
+      # evaluation
+      curr_eval <- eval_model(curr_model, gd_test, test_data)
+      if (curr_eval$accuracy > best_params[["best_acc"]]) {
+        best_params <- list(best_acc=curr_eval$accuracy, best_lr=curr_lr, 
+                            best_epochs=1000, best_penalty=curr_penalty,
+                            best_lambda=curr_lambda)
+      }
+    } else { 
+      # looping through lambda options for l1 or l2 penalties
+      for (curr_lambda in lambda_opts) {
+        # training
+        curr_model <- grad_desc(gd_train, train_data, gd_rec, lr=curr_lr, 
+                                updates=FALSE, penalty=curr_penalty, 
+                                lambda=curr_lambda, epochs=tuning_epochs)
+        
+        # evaluation
+        curr_eval <- eval_model(curr_model, gd_test, test_data)
+        if (curr_eval$accuracy > best_params[["best_acc"]]) {
+          best_params <- list(best_acc=curr_eval$accuracy, best_lr=curr_lr, 
+                              best_epochs=1000, best_penalty=curr_penalty, 
+                              best_lambda=curr_lambda)
+        }
+      }
+    }
+  }
+}
+
+# checking what number of epochs is best for training
+epoch_opts <- seq(300, 1000, by = 100)
+for (curr_epochs in epoch_opts) {
+  curr_model <- grad_desc(gd_train, train_data, gd_rec, lr=best_params$best_lr, 
+                          updates=FALSE, penalty=best_params$best_penalty, 
+                          lambda=best_params$best_lambda, epochs=curr_epochs)
+  
+  curr_eval <- eval_model(curr_model, gd_test, test_data)
+  if (curr_eval$accuracy > best_params[["best_acc"]]) {
+    best_params <- list(best_acc=curr_eval$accuracy, best_lr=best_params$best_lr, 
+                        best_epochs=curr_epochs, 
+                        best_penalty=best_params$best_penalty, 
+                        best_lambda=best_params$best_lambda)
+  }
+}
+
+# outputting best parameters for training
+cat("Best Parameters \n",
+    "Learning Rate: ", best_params[["best_lr"]], "\n",
+    "Epochs: ", best_params[["best_epochs"]], "\n",
+    "Penalty type: ", best_params[["best_penalty"]], "\n",
+    "Lambda: ", best_params[["best_lambda"]], "\n",
+    "Test Accuracy: ", best_params[["best_acc"]], "\n")
+```
+
+## Running gradient decent algorithm and evaluating performance
+```{r}
+# training the model
+model_gd <- grad_desc(gd_train, train_data, gd_rec)
+cat("\n Trained Model Coefficients: \n")
+print(model_gd$coefficients) # printing coefficients for interpretation
+
+# evaluating model
+model_gd_eval <- eval_model(model_gd, gd_test, test_data)
+cat("\n Model Evaluation Results: \n")
+print(model_gd_eval[c("confusion_matrix", "accuracy")])
+```
+
+This model ended up having similar accuracy to our interpretable model (and higher than baseline), which we found to be very good, given we tuned our gradient descent algorithm from scratch. Similar to the interpretable and baseline models; being a staff pick, including a video, including more blurb characters in a description and having shorter campaigns predicted higher chances of success.
+
+
+
+# 4. Prediction Focused Models
+## 4.1 Boosted Trees
+
+As the dataset we have is huge for a complex prediction model (around 200,000 rows), we randomly subset 20% of the data to make code run faster, (that is around 40,000 data points which is still a sufficient amount of data to work with).
+
+```{r}
+set.seed(123)
+kick_data<- sample_n(kick_data, 0.2 * nrow(kick_data))
+View(kick_data) # 38000 entries
+# check imbalance
+kick_data %>% count(state)
+# it is not severely imbalanced, so we will use accuracy as our metric for the model
+kick_data$state <- as.factor(kick_data$state)
+
+```
+
+In this section, we will build our prediction heavy model where our main goal is to produce a model that is focused on predictive accuracy. Given our large dataset, we will try tree-based models (which are quite good for classification).
+
+```{r} 
+# let us try xG boost 
+library(caret)
+library(xgboost)
+library(tidymodels)
+
+# split dataset 80% training and 20% testing
+set.seed(123)
+kick_data_split <- initial_split(kick_data, prop = 0.8, strata = state)
+kick_data_train <- training(kick_data_split)
+kick_data_test <- testing(kick_data_split)
+# check the split
+kick_data_split %>% 
+  summary()
+
+# Our first model is xgboost, here what we will do is to tune all the parameters 
+# that has parameter set to tune() using a latin hypercube grid search, note as 
+# the outcome variable we are trying to predict "state" is a binary variable, our 
+# task is a classification task
+
+# Even with 20% of the entire dataset, that is still about 40,000 entries which is
+# very large. Therefore, running an entire grid search will be quite computational 
+# heavy. On the other hand, a random search also has its downside of missing important 
+# combinations of parameters. Therefore, we will use a latin hypercube grid search 
+# which is a compromise between the two, allowing us to search for the optimal 
+# parameters while also being computationally efficient.
+
+model_1 <- boost_tree(
+  trees = 1000,
+  tree_depth = tune(), min_n= tune(),
+  loss_reduction = tune(),
+  sample_size = tune(), mtry = tune(),
+  learn_rate = tune()
+) %>% 
+  set_engine("xgboost") %>% 
+  set_mode("classification")
+
+#define the latin hypercube grid, with size 30
+model_1_grid <- grid_latin_hypercube(
+  tree_depth(),
+  min_n(),
+  loss_reduction(), 
+  sample_size = sample_prop(),
+  finalize(mtry(), kick_data_train),
+  learn_rate(),
+  size = 30
+)
+
+# set up the workflow
+model_1_wf <- workflow() %>% 
+  add_model(model_1) %>% 
+  add_formula(state ~ .)
+
+
+```
+
+
+```{r}
+# create a 10 fold cross validation object while stratifying state to ensure that
+# each fold has a similar proportion of the outcome classes in state
+kick_data_folds <- vfold_cv(kick_data_train, strata = state)
+# for parallel processing to achieve faster training
+library(doParallel)
+doParallel::registerDoParallel()
+
+model_1_tune <- tune_grid(
+  model_1_wf,
+  resamples = kick_data_folds,
+  grid = model_1_grid,
+  control = control_grid(
+    save_pred = TRUE,
+    verbose = TRUE,
+    allow_par = TRUE
+  )
+)
+
+model_1_tune
+
+```
+
+
+```{r}
+collect_metrics(model_1_tune)
+
+# visualise results
+model_1_tune %>% 
+  collect_metrics() %>% 
+  filter(.metric == "accuracy") %>%
+  select(mean, mtry:sample_size) %>%
+  pivot_longer(mtry:sample_size,
+               values_to = "value",
+               names_to = "parameter") %>%
+  ggplot(aes(x = value, y = mean, color = parameter)) +
+  geom_point(alpha = 0.8, show.legend = FALSE) + facet_wrap(~ parameter, scales = "free_x") + 
+             labs(x = NULL, y = "Accuracy")
+
+# Looks like higher values of tree depth were better, from this plot, it looks like
+# there are several combinations of parameters that can perform well, so we will select
+# the best performing model based on the accuracy metric as the dataset is fairly 
+# balanced. (We have also tried using ROC_AUC but it ended up with the same results)
+
+
+show_best(model_1_tune, metric = "accuracy")
+# Select best model 
+best_acc <- select_best(model_1_tune, metric = "accuracy")
+best_acc
+
+# finalise tunable workflow with the above parameters
+model_1_final <- finalize_workflow(model_1_wf, best_acc)
+
+model_1_final
+
+# we can look into what are the most important parameters for variable importance
+library(vip)
+
+model_1_final %>% 
+  fit(data = kick_data_train) %>%
+  pull_workflow_fit() %>%
+  vip(geom = "point")
+
+# we see that goal is the most important variable, followed by staff pick and 
+# year. These results are quite intuitive as variables like goal and staff pick 
+# should affect the chances of a Kickstarter project being successful or not. 
+# note projects with staff pick on Kickstarter website get more spotlights in 
+# the Kickstarter website.
+
+# evaluate model on test set
+final_res <- last_fit(model_1_final, kick_data_split)
+collect_metrics(final_res)
+```
+
+
+## 4.2 Random Forest Model
+
+```{r}
+set.seed(123)
+# Now lets try random forest to see if it gives us higher accuracy, again similar
+# to the above we will utilise the latin hypercube grid, but obviously will less 
+# parameters to tune.
+model_2 <- rand_forest(
+  trees = 1000,
+  min_n = tune(),
+  mtry = tune()
+) %>% 
+  set_engine("ranger") %>% 
+  set_mode("classification")
+
+model_2_grid <- grid_latin_hypercube(
+  min_n(),
+  finalize(mtry(), kick_data_train),
+  size = 30
+)
+
+# set workflow
+model_2_wtf <- workflow() %>% 
+  add_model(model_2) %>% 
+  add_formula(state ~ .)
+
+
+
+
+```
+
+```{r}
+library(doParallel)
+library(ranger)
+doParallel::registerDoParallel()
+model_2_tune <- tune_grid(
+  model_2_wtf,
+  resamples = kick_data_folds,
+  grid = model_2_grid,
+  control = control_grid(
+    save_pred = TRUE,
+    verbose = TRUE,
+    allow_par = TRUE
+  )
+)
+
+model_2_tune
+```
+
+```{r}
+#Visualise results
+model_2_tune %>% 
+  collect_metrics() %>% 
+  filter(.metric == "accuracy") %>%
+  select(mean, mtry:min_n) %>%
+  pivot_longer(mtry:min_n,
+               values_to = "value",
+               names_to = "parameter") %>%
+  ggplot(aes(x = value, y = mean, color = parameter)) +
+  geom_point(alpha = 0.8, show.legend = FALSE) + facet_wrap(~ parameter, scales = "free_x") + 
+             labs(x = NULL, y = "Accuracy")
+
+# we do not see any particular pattern here
+
+collect_metrics(model_2_tune)
+show_best(model_2_tune, metric = "accuracy")
+best_acc_2 <- select_best(model_2_tune, metric = "accuracy")
+best_acc_2
+
+model_2_final <- finalize_workflow(model_2_wtf, best_acc_2)
+
+model_2_final
+
+model_2_final_res <- last_fit(model_2_final, kick_data_split)
+collect_metrics(model_2_final_res)
+```
+
+
+As can be seen, our prediction-heavy model achieved an accuracy of 78% with xgBoost and 75% with the Random Forest model. This is an acceptable result, given that we have managed to achieve a higher accuracy than any of the other models we have built here. We see that the random forest model we created is not as accurate as the xgboost model, with an accuracy of 75% on the test set. This is likely due to the fact that random forest is a bagging method and, therefore, does not perform as well as boosting methods like xgboost, which does require more careful hyperparameter tuning, albeit if done well, can outperform bagging methods like random forest.
+
+Therefore, it is good to see that our prediction heavy model(boosted trees) achieved a higher accuracy than the baseline models by a relatively large margin.
+However, it is important to note that some of the academic papers we have read use other methods as well. For example, "KickPredict: Predicting Kickstarter Success Kevin Chen, Brock Jones, Isaac Kim, Brooklyn Schlamp Dept. of Computing and Mathematical Sciences California Institute of Technology 1200 E California Blvd Pasadena" used Support Vector Machine models using the ScikitLearn package on Python, also, "Launch Hard or Go Home! Predicting the Success of Kickstarter Campaigns Vincent Etter Matthias Grossglauser Patrick Thiran School of Computer and Communication Sciences École Polytechnique Fédérale de Lausanne (EPFL)" covered more advanced modelling methods like the Markov Model. Although we did not cover these methods in this project, as it was slightly more advanced and were methods that we did not cover in our course, it is worth noting that these methods could potentially lead to even higher accuracy than the models we have built here.
+
+Lastly, we must note the computational constraint we had as well, as we have only used 20% of our total data; if we had more computing power we may have been able to achieve even higher accuracy.
+
+Note the method used was based on a method used here "https://juliasilge.com/blog/xgboost-tune-volleyball/"
+
+
+# 5. High Dimensional Model
+As our dataset has nearly 200,000 entries with only 10 predictors, our dataset is not exactly 'high dimensional.' As such, to create a high dimensional model, we use only 1% of our total dataset (2000 entries) and create additional predictors through non-linear transformations, interaction terms and local smoothing. In total, our 'high dimensional' dataset ended up having around 2000 entries with 95 predictors that were created from the original 10. We then fit models that are suited to dealing with high dimensional data.
+
+```{r}
+kick_data <- read.csv('cleaned310.csv')
+
+#Centred year since later found it made more sense as a centred predictor
+kick_data$year_centred <- kick_data$year_launched - 2009
+kick_data <- kick_data %>% select(-year_launched)
+
+#Made the following columns the correct type for later models
+kick_data <- kick_data %>%
+  mutate(
+    category = as.factor(category),
+    currency = as.factor(currency),
+    day_launched = as.factor(day_launched),
+    month_launched = as.factor(month_launched),
+    state = as.factor(state)
+  )
+
+# As the dataset we have is huge for tree models with nearly 200,000 rows, I am 
+# going to randomly subset 1% of the data to make it easier to work with, (that 
+# is around 2,000 data points
+set.seed(123)
+kick_data<- sample_n(kick_data, 0.01 * nrow(kick_data))
+#View(kick_data)  
+# check imbalance
+kick_data %>% count(state)
+# it is not severely imbalanced so we will just use a threshold of 0.5 to measure accuracy
+```
+
+
+```{r}
+# Now we will add more predictor variables by introducing non-linear transformations,
+# interaction terms, and local smoothing
+
+# First we will introduce some non-linear transformations
+kick_data <- kick_data %>%
+  mutate(
+    goal_squared = (goal_usd)^2,
+    goal_log= log(goal_usd),
+    goal_sqrt = sqrt(goal_usd),
+    duration_log = log(desired_duration),
+    duration_sqrt = sqrt(desired_duration),
+    duration_squared = (desired_duration)^2,
+    blurb_characters_log = log(blurb_characters),
+    blurb_characters_sqrt = sqrt(blurb_characters),
+    blurb_characters_squared = (blurb_characters)^2,
+    blurb_per_day = blurb_characters / desired_duration,
+    goal_per_day = goal_usd / desired_duration,
+    goal_per_blurb = goal_usd / blurb_characters,
+    duration_per_goal = desired_duration / goal_usd,
+    goal_cubed = (goal_usd)^3,
+    duration_cubed = desired_duration^3,
+    blurb_characters_cubed = blurb_characters^3,
+    goal_per_day_squared = (goal_usd / desired_duration)^2,
+    goal_per_day_cubed = (goal_usd / desired_duration)^3,
+    goal_per_day_log = log(goal_usd / desired_duration),
+    goal_per_day_sqrt = sqrt(goal_usd / desired_duration),
+    goal_quartic = (goal_usd)^4,
+    duration_quartic = (desired_duration)^4,
+    blurb_characters_quartic = (blurb_characters)^4,
+    
+  )
+
+# Now we will introduce some interaction terms
+
+
+kick_data <- kick_data %>%
+  mutate(
+    goal_duration = goal_usd * desired_duration,
+    goal_blurb = goal_usd * blurb_characters,
+    blurb_duration = blurb_characters * desired_duration,
+    goal_blurb_duration = goal_usd * blurb_characters * desired_duration,
+    goal_log_duration = goal_log * desired_duration,
+    goal_log_blurb = goal_log * blurb_characters,
+    goal_log_blurb_duration = goal_log * blurb_characters * desired_duration,
+    goal_sqrt_duration = goal_sqrt * desired_duration,
+    goal_sqrt_blurb = goal_sqrt * blurb_characters,
+    goal_sqrt_blurb_duration = goal_sqrt * blurb_characters * desired_duration,
+    goal_squared_duration = goal_squared * desired_duration,
+    goal_squared_blurb = goal_squared * blurb_characters,
+    goal_squared_blurb_duration = goal_squared * blurb_characters * desired_duration,
+    duration_log_blurb = duration_log * blurb_characters,
+    duration_log_goal = duration_log * goal_usd,
+    duration_log_goal_blurb = duration_log * goal_usd * blurb_characters,
+    duration_sqrt_blurb = duration_sqrt * blurb_characters,
+    duration_sqrt_goal = duration_sqrt * goal_usd,
+    duration_sqrt_goal_blurb = duration_sqrt * goal_usd * blurb_characters,
+    duration_squared_blurb = duration_squared * blurb_characters,
+    duration_squared_goal = duration_squared * goal_usd,
+    duration_squared_goal_blurb = duration_squared * goal_usd * blurb_characters,
+    blurb_characters_log_duration = blurb_characters_log * desired_duration,
+    blurb_characters_log_goal = blurb_characters_log * goal_usd,
+    blurb_characters_log_goal_duration = blurb_characters_log * goal_usd * desired_duration,
+    blurb_characters_sqrt_duration = blurb_characters_sqrt * desired_duration,
+    blurb_characters_sqrt_goal = blurb_characters_sqrt * goal_usd,
+    blurb_characters_sqrt_goal_duration = blurb_characters_sqrt * goal_usd * desired_duration,
+    blurb_characters_squared_duration = blurb_characters_squared * desired_duration,
+    blurb_characters_squared_goal = blurb_characters_squared * goal_usd,
+    blurb_characters_squared_goal_duration = blurb_characters_squared * goal_usd * desired_duration,
+    blurb_per_day_duration = blurb_per_day * desired_duration,
+    blurb_per_day_goal = blurb_per_day * goal_usd,
+    blurb_per_day_goal_duration = blurb_per_day * goal_usd * desired_duration,
+    goal_per_day_duration = goal_per_day * desired_duration,
+    goal_per_day_blurb = goal_per_day * blurb_characters,
+    goal_per_day_blurb_duration = goal_per_day * blurb_characters * desired_duration,
+    goal_log_duration_squared = goal_log * duration_squared,
+    goal_log_blurb_squared = goal_log * blurb_characters_squared,
+    goal_log_blurb_duration_squared = goal_log * blurb_characters_squared * desired_duration,
+    goal_sqrt_blurb_squared = goal_sqrt * blurb_characters_squared,
+    goal_sqrt_blurb_duration_squared = goal_sqrt * blurb_characters_squared * desired_duration,
+    goal_squared_blurb_squared = goal_squared * blurb_characters_squared,
+    goal_squared_blurb_duration_squared = goal_squared * blurb_characters_squared * desired_duration,
+    goal_sqrt_blurb_log = goal_sqrt * blurb_characters_log,
+    goal_squared_blurb_log = goal_squared * blurb_characters_log,
+    goal_log_blurb_log = goal_log * blurb_characters_log
+    
+  )
+   
+
+
+# Now we will introduce some local smoothing
+library(splines)
+
+# Add natural spline basis for 'goal'
+goal_spline <- as.data.frame(ns(kick_data$goal_usd, df = 5))
+colnames(goal_spline) <- paste0("goal_spline_", 1:5)
+
+# Add natural spline basis for 'desired_duration'
+duration_spline <- as.data.frame(ns(kick_data$desired_duration, df = 5))
+colnames(duration_spline) <- paste0("duration_spline_", 1:5)
+
+# Add natural spline basis for 'blurb_characters'
+blurb_spline <- as.data.frame(ns(kick_data$blurb_characters, df = 5))
+colnames(blurb_spline) <- paste0("blurb_spline_", 1:5)
+
+# Bind to original data
+kick_data <- cbind(kick_data, goal_spline, duration_spline, blurb_spline)
+
+# see how many columns we have
+ncol(kick_data)  
+# We see we have 96 columns, with one of them being the outcome variable, so now 
+# we have increased it from 10 to 95 predictors, which is (relatively) high dimensional
+# for 2000 data points.
+
+```
+
+```{r}
+library(tidymodels)
+library(glmnet)
+set.seed(123)
+kick_data_split <- initial_split(kick_data, prop = 0.8, strata = state)
+kick_data_train <- training(kick_data_split) %>% filter(complete.cases(.))
+kick_data_test <- testing(kick_data_split) %>% filter(complete.cases(.))
+# check the split
+kick_data_split %>% 
+  summary()
+
+
+# Convert to model matrix and make sure intercept is not duplicated
+x_train <- model.matrix(state ~ . - 1, data = kick_data_train)
+y_train <- kick_data_train$state
+x_test <- model.matrix(state ~ . - 1, data = kick_data_test)
+y_test <- kick_data_test$state
+
+# Fit ridge
+ridge_model <- cv.glmnet(x_train, y_train, type.measure = "deviance", alpha = 0, family = "binomial")
+ridge_predicted <- predict(ridge_model, s=ridge_model$lambda.1se, newx = x_test)
+
+ridge_predicted <- ifelse(ridge_predicted > 0.5, "TRUE", "FALSE")
+# Evaluate model performance
+mean(ridge_predicted == y_test) 
+
+# Fit lasso
+lasso_model <- cv.glmnet(x_train, y_train, type.measure = "deviance", alpha = 1, family = "binomial")
+lasso_predicted <- predict(lasso_model, s=lasso_model$lambda.1se, newx = x_test)
+lasso_predicted <- ifelse(lasso_predicted > 0.5, "TRUE", "FALSE")
+# Evaluate model performance
+mean(lasso_predicted == y_test)
+
+# Fit elastic net
+elastic_net_model <- cv.glmnet(x_train, y_train, type.measure = "deviance", alpha = 0.5, 
+                               family = "binomial")
+elastic_net_predicted <- predict(elastic_net_model, s=elastic_net_model$lambda.1se, newx = x_test)
+elastic_net_predicted <- ifelse(elastic_net_predicted > 0.5, "TRUE", "FALSE")
+# Evaluate model performance
+mean(elastic_net_predicted == y_test) 
+
+# Let us try a different values of alpha
+list_of_fits <- list()
+for (i in 0:10) {
+  fit_name <- paste0("alpha", i/10)
+  list_of_fits[[fit_name]] <- cv.glmnet(x_train, y_train, type.measure = "deviance", 
+                                        alpha = i/10, family = "binomial")
+}
+
+results <- data.frame()
+for (i in 0:10) {
+  fit_name <- paste0("alpha", i/10)
+  predicted <-
+    predict(list_of_fits[[fit_name]], s=list_of_fits[[fit_name]]$lambda.1se, newx = x_test)
+  accuracy <- mean(ifelse(predicted > 0.5, "TRUE", "FALSE") == y_test)
+  temp <- data.frame(
+    alpha = i / 10,
+    accuracy = accuracy,
+    fit_name = fit_name
+  )
+  results <- rbind(results, temp)
+  }
+
+results # we see alpha of 0.1 has the highest accuracy of 71%
+
+
+```
+
+Therefore, with 1% of the original dataset and 95 predictors, our modelling was somewhat high-dimensional. With an elastic net model (alpha of 0.1), we managed to achieve an accuracy of 73.4%, which is slightly higher than the baseline model. Given that we used 1% of the dataset, this is an impressive result, indicating some of the variables we added were useful in the model, although with 95 predictors, it is likely that they were many variables that added small/no value to model accuracy which is represented by the relatively high accuracy we see in the Lasso model. (i.e. some predictors were likely to have diminished to 0)
+
+The U shape we see in accuracy across various values of alphas suggest the bias variance trade off we see in the different type of penalised regression models. Where accuracy is quite high with a Ridge regression, and then declines to the minimum point at 0.8 but then accuracy increases from there again to bounce back to around 70% with Lasso regression.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
