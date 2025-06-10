@@ -2,7 +2,7 @@
   
 I used the following packages for this task: 
   
-`car, tidyverse, gridExtra, ggplot2, boot, gam, glmnet, MASS, e1071, and class.`
+`car`, `tidyverse`, `gridExtra`, `ggplot2`, `boot`, `gam`, `glmnet`, `MASS`, `e1071`, and `class`.
   
 These are the models, tuning parameters and how I chose them:
 
