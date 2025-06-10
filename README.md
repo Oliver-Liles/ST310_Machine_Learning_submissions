@@ -15,4 +15,5 @@ Course Information for ST310 can be found here:
 
 *https://www.lse.ac.uk/resources/calendar2024-2025/courseGuides/ST/2024_ST310.htm*
 
+*https://ml4ds.com/*
 
