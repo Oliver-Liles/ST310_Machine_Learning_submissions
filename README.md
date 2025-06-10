@@ -6,7 +6,7 @@
 
 1. Fitting tree models and personally created data<sup>[[1]](https://github.com/Oliver-Liles/ST310_Machine_Learning_submissions/tree/main/1_Tree_Models)</sup>
 2. Fitting the most suitable type of ML models on a veriety of different given data<sup>[[2]](https://github.com/Oliver-Liles/ST310_Machine_Learning_submissions/tree/main/2_ML_Models_For_Generated_Data)</sup>
-3. Fitting a suitable ML models to real-world data (Kickstarter)
+3. Fitting a suitable ML models to real-world data (about Kickstarter)<sup>[[3]](https://github.com/Oliver-Liles/ST310_Machine_Learning_submissions/tree/main/3_ML_For_Kickstarter_Data)</sup>
 
 
 Course Information for ST310 can be found here:
