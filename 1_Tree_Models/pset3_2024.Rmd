@@ -1,0 +1,144 @@
+---
+title: "Exercise set 3"
+author: your candidate number
+output: html_document
+---
+
+[5 marks] for following all instructions (note: 75 marks total, will be scaled to 100)
+
+- **Important**: Read all instructions
+- Change the author of this document to your candidate number
+- Change the filename of this document to pset3_yournumber.Rmd
+- After finishing each exercise delete its instructions
+- Delete these instructions and knit one last time before submitting your output
+
+```{r setup1, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+library(tidyverse)
+theme_set(theme_minimal())
+```
+
+```{r setup2}
+candidate_number <- 1 # change this from 1 to your number
+set.seed(candidate_number)
+```
+
+## Simulation exercise
+
+### Data generation
+
+[10 marks] split into 5 for following these instructions, and 5 for the quality and originality of your example
+
+- We will fit some `gam` and tree based models, and we would like a dataset with many observations (on the order of a thousand or more) and not too many variables (fewer than 10, say)
+- We want a dataset of predictors with a mix of categorical and numeric variables. You can pick an existing dataset or simulate the data yourself.
+- Create a CEF and noise term and generate an outcome variable from the predictors.
+- See below an example way to simulate data. If you decide to use this example for inspiration, be aware that you should understand how it works and change more of the details to earn more marks.
+
+```{r}
+n <- 2000
+# Generate categorical predictor(s)
+categories <- c("lion", "dog", "parakeet")
+cat_var <- factor(sample(categories, n, prob = c(2, 2, 1), replace = TRUE))
+table(cat_var)
+```
+
+```{r}
+# Generate numeric predictor(s)
+x <- 2 * (runif(n) - 1/2)
+# Data frame version of predictors
+predictors <- data.frame(x1 = x, x2 = cat_var)
+head(predictors)
+```
+
+```{r}
+# CEF
+CEF <- function(x1, x2) {
+  if_else(x2 == "lion",
+          # first case
+          1/2 + x1^4/2,
+          ifelse(x2 == "dog",
+                 # second case
+                 1 - x1^4,
+                 # last case
+                 1 + x1^3 + x1^4
+                 )
+         )
+}
+training_data <- predictors |> mutate(y = CEF(x1, x2) + rnorm(n, sd = .2))
+ggplot(training_data, aes(x1, y, colour = x2)) + geom_point(alpha = .7)
+```
+
+
+```{r}
+# Matrix versions in case any model fitting functions need them
+# if not then you can delete this
+Y <- training_data$y
+X <- model.matrix(~ .-1, predictors)
+head(X)
+X_int <- model.matrix(~ x1*x2-1, predictors)
+head(X_int)
+```
+
+### Additive models
+
+[10 marks] split into 3 for following the instructions for each model, and 2 for the quality and originality of the plots for each model
+
+- Fit two `gam` models: name one `gam_oracle` and use your knowledge of the true CEF to choose which interaction terms to include in the formula for this one, and name the other `gam_simple` with no interaction terms included
+- Create some kind of plots for each model to visualise its predictions, and use aesthetics like colours, linetypes, etc, as appropriate to make plots more informative
+
+```{r}
+
+```
+
+
+### Tree based models
+
+[15 marks] split into 3 for each model being fit and tuned properly, and 2 for the quality and originality of plots/interpretations for each model
+
+- Fit models using a single tree, a random forest, and boosted trees
+- Use some type of (cross)validation to tune any tuning parameters and select the best of each kind of model
+- Create some kind of plots for each model to visualise its predictions
+- Apply any other model interpretation tool you deem to be appropriate, comment on what you see as it compares to your knowledge of the true CEF, and comment on any important limitations that apply to these conclusions
+
+```{r}
+
+```
+
+
+### ID generalisation
+
+[5 marks] for validating correctly
+
+- Compute accuracy for each of the tree based models fit above on test data. This test data should be an independent sample from the same distribution as the original data
+- Determine which tree based model has the best test accuracy, this will be used for the rest of the assignment (if you run into error messages that you cannot fix, that could be a reasonable justification to use a different model from this point onward if that other model does not give you errors)
+
+### OOD generalisation
+
+- In each section below, create modified versions of the data generation code to produce new out-of-distribution test data
+- Apply the best tree based model to this new test data and compare the OOD accuracy to its ID accuracy
+- In each section, give two examples of distribution shifts, one where the OOD accuracy is worse than ID and one where it is better than ID
+- Write a short, intuitive explanation for why each of these performed better or worse, i.e. explain your reasoning behind how you decided to modify the DGP to make the performance improve or degrade
+- Note that in this section, part of the quality of an example involves how small of a change in the DGP is necessary. In other words, there are many ways to make extreme changes to the DGP, but those are less interesting
+
+#### Concept shift
+
+[15 marks] 5 for each shift satisfying the desired conditions (one better, one worse), and 5 for the overall quality of the examples, output, and explanation
+
+- In this section, the (joint) distribution of the predictor variables should be the same as in the original data, but the conditional distribution of the outcome should be different
+
+```{r}
+
+```
+
+#### Covariate shift
+
+[15 marks] 5 for each shift satisfying the desired conditions (one better, one worse), and 5 for the overall quality of the examples, output, and explanation
+
+- In this section, the conditional distribution of the outcome should stay the same, but the (joint) distribution of the predictor variables should be different
+
+```{r}
+
+```
+
+
